@@ -1,7 +1,7 @@
 # hackathon-bot
 Итоговая работа по буткемпу "AI-ARROW" трек senior
 
-![Image alt](https://github.com/dima0409/AI-ARROW-Middle/blob/main/other/1.jpg)
+![Image alt](https://github.com/dima0409/hackathon-bot/blob/main/other/1.jpg)
 ## Цель:
 Разработать Telegram бот, который будет ассистентом команды для хакатона. Бот должен с помощью LLM помогать команде формировать продукт, описывать задачи, подсказывать варианты решений, изучать неизвестные темы, помогать писать код, помогать готовиться к защите проект.
 ## Структура:
@@ -27,7 +27,7 @@ GIGACHAT_TOKEN = 'token(base64)'
 
 Метрика SBS
 
-![Image alt](https://github.com/dima0409/AI-ARROW-Middle/blob/main/other/1.jpg)
+![Image alt](https://github.com/dima0409/hackathon-bot/blob/main/other/SBS.png)
 
 Чтобы посчитать эту метрику, мы выбираем заранее фиксированный набор вопросов и генерируем на них ответы двумя моделями. После этого наши сотрудники выбирают, какая модель ответила лучше на каждый вопрос. Результатов у каждого сравнения может быть 4:
 
