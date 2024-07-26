@@ -19,7 +19,7 @@ async def info(update: Update, context: CallbackContext) -> None:
     await query.answer()
     await query.edit_message_text(text='Цель бота: Я - ваш верный помощник в этом хакатоне “Подземелья и Драконы”. Готов помочь вам с любыми задачами, будь то поиск информации, генерация идей или просто поддержка в трудную минуту.\n'
                                        ' Команды бота:\n `/start` — Запуск взаимодействия с ботом и получение приветственного сообщения.\n `/clear` — Очистка истории сообщений в группе (доступно только администратору).\n `/ai [промт]` — Использование гигачата для генерации ответов. Пример: `/ai Напиши шаблон для Telegram-бота`.\n'
-                                       ' Исходный код этого бота можно найти в [ репозитории на GitHub](https://github.com/dima0409/AI-ARROW-Middle)',parse_mode='markdown' )# info
+                                       ' Исходный код этого бота можно найти в [ репозитории на GitHub](https://github.com/dima0409/hackathon-bot)',parse_mode='markdown' )# info
 
 async def clear(update: Update, context: CallbackContext) -> None:
     if update.effective_chat.type == 'group':
