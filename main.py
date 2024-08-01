@@ -1,5 +1,5 @@
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup, error
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler, ContextTypes
 from telegram.constants import ChatAction
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, FunctionMessage
 from langchain_community.chat_models import GigaChat
@@ -16,6 +16,9 @@ import re
 from langchain_community.document_loaders import UnstructuredURLLoader
 from urllib3.exceptions import InsecureRequestWarning
 import contextlib, warnings
+import aiosqlite, asyncio
+
+DB_FILE = 'database.db'
 
 old_merge_environment_settings = requests.Session.merge_environment_settings
 
@@ -145,16 +148,27 @@ agent_executor = AgentExecutor(
 history = {}
 
 async def start(update: Update, context: CallbackContext) -> None:
-    keyboard = [[InlineKeyboardButton("Info", callback_data='info')]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text('Приветствую, искатель приключений!🧙‍\n️ Я - ваш верный помощник в этом хакатоне “Подземелья и Драконы”. Готов помочь вам с любыми задачами, будь то поиск информации, генерация идей или просто поддержка в трудную минуту. Давайте вместе создадим что-то удивительное!', reply_markup=reply_markup)
+    await update.message.reply_text('Приветствую, искатель приключений!🧙‍\n️ '
+                                    'Я - ваш верный помощник в этом хакатоне “Подземелья и Драконы”. Готов помочь вам с любыми задачами, будь то поиск информации, генерация идей или просто поддержка в трудную минуту. Напишите команду /info, чтобы узнать больше. Давайте вместе создадим что-то удивительное!')
 
 async def info(update: Update, context: CallbackContext) -> None:
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text(text='Цель бота: Я - ваш верный помощник в этом хакатоне “Подземелья и Драконы”. Готов помочь вам с любыми задачами, будь то поиск информации, генерация идей или просто поддержка в трудную минуту.\n'
-                                       ' Команды бота:\n `/start` — Запуск взаимодействия с ботом и получение приветственного сообщения.\n `/clear` — Очистка истории сообщений в группе (доступно только администратору).\n `/ai [промт]` — Использование гигачата для генерации ответов. Пример: `/ai Напиши шаблон для Telegram-бота`.\n'
-                                       ' Исходный код этого бота можно найти в [ репозитории на GitHub](https://github.com/dima0409/hackathon-bot)',parse_mode='markdown' )# info
+    await update.message.reply_text(
+        text='Цель бота: Я - ваш верный помощник в этом хакатоне “Подземелья и Драконы”. Готов помочь вам с любыми задачами, будь то поиск информации, генерация идей или просто поддержка в трудную минуту.\n'
+             'Команды бота:\n'
+             '`/start` — Запуск взаимодействия с ботом и получение приветственного сообщения.\n'
+             '`/clear` — Очистка истории сообщений в группе (доступно только администратору).\n'
+             '`/ai [промт]` — Использование гигачата для генерации ответов. Пример: `/ai Напиши шаблон для Telegram-бота`.\n'
+             '`/anket [текст]` — Добавление новой анкеты. Пример: `/anket Привет, я знаю ML`.\n'
+             '`/edit [текст]` — Редактирование существующей анкеты. Пример: `/edit Привет, я не знаю ML`.\n'
+             '`/delete` — Удаление анкеты.\n'
+             '`/show` — Показ всех анкет.\n'
+             '`/task [задача]` — Добавление новой задачи. Пример: `/task Написать модель`.\n'
+             '`/edit_task [номер задачи] [новый текст]` — Редактирование существующей задачи. Пример: `/edit_task 1 Обучить модель`.\n'
+             '`/delete_task` — Удаление задачи. Бот предложит выбрать задачу для удаления.\n'
+             '`/show_task` — Показ всех задач.\n'
+             'Исходный код этого бота можно найти в [ репозитории на GitHub](https://github.com/dima0409/hackathon-bot)',
+        parse_mode='markdown'
+    )
 
 def genai(uid, uname, user_input):
     if uid not in history.keys():
@@ -190,7 +204,7 @@ async def clear(update: Update, context: CallbackContext) -> None:
 
 async def generate_ai_response(update: Update, context: CallbackContext) -> None:
     uid = update.message.chat.id
-    uname = f"{update.effective_user.first_name} {update.effective_user.last_name} (Никнейм)" if update.effective_chat.type == 'group' else "Пользователь"
+    uname = f"{update.effective_user.username}" if update.effective_chat.type == 'group' else "Пользователь"
     user_input = update.message.text
 
     await context.bot.send_chat_action(chat_id=update.effective_message.chat_id, action=ChatAction.TYPING)
@@ -209,7 +223,7 @@ async def generate_ai_response(update: Update, context: CallbackContext) -> None
 
 async def cmdai(update: Update, context: CallbackContext) -> None:
     uid = update.message.chat.id
-    uname = f"{update.effective_user.first_name} {update.effective_user.last_name} (Никнейм)" if update.effective_chat.type == 'group' else "Пользователь"
+    uname = f"{update.effective_user.username}" if update.effective_chat.type == 'group' else "Пользователь"
     user_input = " ".join(context.args)
 
     await context.bot.send_chat_action(chat_id=update.effective_message.chat_id, action=ChatAction.TYPING)
@@ -224,6 +238,131 @@ async def cmdai(update: Update, context: CallbackContext) -> None:
     except Exception as e:
         await update.message.reply_text("серьезная ошибка")
 
+async def add_application(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    text = ' '.join(context.args)
+    if not text:
+        await update.message.reply_text("Ошибка: текст анкеты не может быть пустым. Используйте команду /anket {текст}.")
+        return
+    user_id = update.message.from_user.id
+    username = update.message.from_user.username
+    async with aiosqlite.connect(DB_FILE) as db:
+        await db.execute('INSERT OR REPLACE INTO applications (user_id, username, text) VALUES (?, ?, ?)', (user_id, username, text))
+        await db.commit()
+    await update.message.reply_text("Анкета добавлена!")
+
+async def edit_application(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    new_text = ' '.join(context.args)
+    if not new_text:
+        await update.message.reply_text("Ошибка: текст анкеты не может быть пустым. Используйте команду /edit {новый текст}.")
+        return
+    user_id = update.message.from_user.id
+    async with aiosqlite.connect(DB_FILE) as db:
+        await db.execute('UPDATE applications SET text = ? WHERE user_id = ?', (new_text, user_id))
+        await db.commit()
+    await update.message.reply_text("Анкета обновлена!")
+
+async def delete_application(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.message.from_user.id
+    async with aiosqlite.connect(DB_FILE) as db:
+        await db.execute('DELETE FROM applications WHERE user_id = ?', (user_id,))
+        await db.commit()
+    await update.message.reply_text("Анкета удалена!")
+
+async def show_applications(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    async with aiosqlite.connect(DB_FILE) as db:
+        async with db.execute('SELECT username, text FROM applications') as cursor:
+            applications = await cursor.fetchall()
+    if not applications:
+        await update.message.reply_text("Нет анкет.")
+        return
+    for app in applications:
+        username, text = app
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(f"Связаться с {username}", url=f"https://t.me/{username}")]])
+        await update.message.reply_text(f"Пользователь: {username}\nТекст: {text}", reply_markup=keyboard)
+
+async def add_task(update: Update, context: CallbackContext) -> None:
+    task_text = ' '.join(context.args)
+    if not task_text:
+        await update.message.reply_text("Пожалуйста, укажите текст задачи.")
+        return
+    chat_id = update.message.chat_id
+    async with aiosqlite.connect(DB_FILE) as db:
+        async with db.execute("SELECT MAX(task_number) FROM tasks WHERE chat_id=?", (chat_id,)) as cursor:
+            max_task_number = await cursor.fetchone()
+            new_task_number = (max_task_number[0] or 0) + 1
+        await db.execute("INSERT INTO tasks (task_text, status, chat_id, task_number) VALUES (?, ?, ?, ?)", (task_text, 'active', chat_id, new_task_number))
+        await db.commit()
+    await update.message.reply_text("Задача добавлена.")
+
+async def edit_task(update: Update, context: CallbackContext) -> None:
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text("Пожалуйста, укажите номер задачи и новый текст задачи.")
+        return
+
+    task_number = args[0]
+    new_task_text = ' '.join(args[1:])
+    chat_id = update.message.chat_id
+
+    async with aiosqlite.connect(DB_FILE) as db:
+        await db.execute("UPDATE tasks SET task_text=? WHERE task_number=? AND chat_id=?", (new_task_text, task_number, chat_id))
+        await db.commit()
+    await update.message.reply_text("Задача обновлена.")
+
+async def delete_task(update: Update, context: CallbackContext) -> None:
+    chat_id = update.message.chat_id
+    async with aiosqlite.connect(DB_FILE) as db:
+        async with db.execute("SELECT id, task_text, task_number FROM tasks WHERE status='active' AND chat_id=?", (chat_id,)) as cursor:
+            tasks = await cursor.fetchall()
+    if not tasks:
+        await update.message.reply_text("Нет активных задач для удаления.")
+        return
+
+    keyboard = [[InlineKeyboardButton(f"{task[2]}. {task[1]}", callback_data=f"delete_{task[0]}")] for task in tasks]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Выберите задачу для удаления:", reply_markup=reply_markup)
+
+async def show_tasks(update: Update, context: CallbackContext) -> None:
+    chat_id = update.message.chat_id
+    async with aiosqlite.connect(DB_FILE) as db:
+        async with db.execute("SELECT task_number, task_text FROM tasks WHERE status='active' AND chat_id=?", (chat_id,)) as cursor:
+            tasks = await cursor.fetchall()
+    if not tasks:
+        await update.message.reply_text("Нет активных задач.")
+        return
+
+    tasks_list = "\n".join([f"{task[0]}. {task[1]}" for task in tasks])
+    await update.message.reply_text(f"Список задач:\n{tasks_list}")
+
+async def button(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    await query.answer()
+
+    if query.data.startswith('delete_'):
+        task_id = int(query.data.split('_')[1])
+        keyboard = [
+            [InlineKeyboardButton("Да", callback_data=f"confirm_delete_{task_id}")],
+            [InlineKeyboardButton("Нет", callback_data="cancel_delete")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text("Вы точно хотите удалить?", reply_markup=reply_markup)
+
+    elif query.data.startswith('confirm_delete_'):
+        task_id = int(query.data.split('_')[2])
+        async with aiosqlite.connect(DB_FILE) as db:
+            await db.execute("DELETE FROM tasks WHERE id=?", (task_id,))
+            await db.commit()
+            # Обновление порядковых номеров задач
+            async with db.execute("SELECT id FROM tasks WHERE status='active' AND chat_id=? ORDER BY task_number", (query.message.chat_id,)) as cursor:
+                tasks = await cursor.fetchall()
+                for index, task in enumerate(tasks):
+                    await db.execute("UPDATE tasks SET task_number=? WHERE id=?", (index + 1, task[0]))
+            await db.commit()
+        await query.edit_message_text("Задача удалена.")
+
+    elif query.data == 'cancel_delete':
+        await query.edit_message_text("Удаление отменено.")
+
 async def post_init(application: Application) -> None:
     print(application.bot.username)
 
@@ -231,8 +370,18 @@ def main() -> None:
     updater = Application.builder().post_init(post_init).token(TELEGRAM_TOKEN).build()
 
     updater.add_handler(CommandHandler("start", start))
+    updater.add_handler(CommandHandler("info", info))
     updater.add_handler(CommandHandler("clear", clear))
     updater.add_handler(CommandHandler("ai", cmdai))
+    updater.add_handler(CommandHandler('anket', add_application))
+    updater.add_handler(CommandHandler('edit', edit_application))
+    updater.add_handler(CommandHandler('delete', delete_application))
+    updater.add_handler(CommandHandler('show', show_applications))
+    updater.add_handler(CommandHandler("task", add_task))
+    updater.add_handler(CommandHandler("edit_task", edit_task))
+    updater.add_handler(CommandHandler("delete_task", delete_task))
+    updater.add_handler(CommandHandler("show_task", show_tasks))
+    updater.add_handler(CallbackQueryHandler(button))
     updater.add_handler(CallbackQueryHandler(info, pattern='^' + 'info' + '$'))
     updater.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, generate_ai_response))
 
